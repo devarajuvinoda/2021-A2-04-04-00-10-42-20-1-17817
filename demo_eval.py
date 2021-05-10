@@ -295,7 +295,7 @@ def save_result(input_file, output_file):
         
         res = translate(w)
         res,som = get_token.tokenize(res[:-6])
-        
+        res = reverse_normalize(res, rev_dict)
         out.append(res)
     new_df = df_test.copy();
     new_df['fixedTokens'] = out
