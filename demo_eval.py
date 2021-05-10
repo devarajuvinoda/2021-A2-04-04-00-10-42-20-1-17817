@@ -17,6 +17,49 @@ import regex as re
 from abc import abstractmethod
 from tokenizer.c_tokenizer import C_Tokenizer
 
+def normalize(tokenized_program, name_dict):
+    cnt = 0
+    itr = -1
+    build_dict = {}
+    for i,j in zip(tokenized_program, name_dict):
+        itr += 1
+        new_name = ('var_'+str(cnt))
+        if((j == 'name' or j == 'number' or j== 'string') and (i in build_dict.keys())):
+            tokenized_program[itr] = build_dict[i]
+            cnt += 1
+        elif(j == 'name' or j == 'number' or j== 'string'):
+            tokenized_program[itr] = new_name
+            cnt += 1
+            build_dict[i] = new_name
+    return tokenized_program 
+
+def normalize_test(tokenized_program, name_dict):
+    cnt = 0
+    itr = -1
+    build_dict = {}
+    reverse_dict = {}
+    for i,j in zip(tokenized_program, name_dict):
+        itr += 1
+        new_name = ('var_'+str(cnt))
+        if((j == 'name' or j == 'number' or j== 'string') and (i in build_dict.keys())):
+            tokenized_program[itr] = build_dict[i]
+            cnt += 1
+        elif(j == 'name' or j == 'number' or j== 'string'):
+            tokenized_program[itr] = new_name
+            cnt += 1
+            build_dict[i] = new_name
+            reverse_dict[new_name] = i
+
+    return tokenized_program, reverse_dict
+
+def reverse_normalize(token_list, reverse_dict):
+    itr = -1
+    for i in token_list:
+        itr += 1
+        if(i in reverse_dict.keys()):
+            token_list[itr] = reverse_dict[i]
+    return token_list
+
 def tokenize(lang):
     lang_tokenizer = tf.keras.preprocessing.text.Tokenizer(filters='', oov_token='<oov>')
     lang_tokenizer.fit_on_texts(lang)
@@ -43,25 +86,28 @@ def text_to_seq(tokenizer, lang):
 def load_dataset(ip_data):
     inp_lang = []
     targ_lang = []
-    for w,k in zip(ip_data['sourceLineTokens'], ip_data['targetLineTokens']):
-        wv = []
-        kv =[]
-        wv = ast.literal_eval(w)
-        kv = ast.literal_eval(k)
-        wv.append('<end>')
-        wv.insert(0, '<start>')
-        kv.append('<end>')
-        kv.insert(0, '<start>')
+    obj = C_Tokenizer()
+    for w,k in zip(ip_data['sourceLineText'], ip_data['targetLineText']):
+        w_tok, w_dict = obj.tokenize(w)
+        k_tok, k_dict = obj.tokenize(k)
+        
+        w_tok = normalize(w_tok, w_dict)
+        k_tok = normalize(k_tok, k_dict)
+        w_tok.append('<end>')
+        w_tok.insert(0, '<start>')
+        k_tok.append('<end>')
+        k_tok.insert(0, '<start>')
 
-        if(len(wv)<=50 and len(kv)<=50):
-            inp_lang.append(wv)
-            targ_lang.append(kv)
+        if(len(w_tok)<=50 and len(k_tok)<=50):
+            inp_lang.append(w_tok)
+            targ_lang.append(k_tok)
 
     input_tensor, inp_lang_tokenizer = tokenize(inp_lang)
     target_tensor, targ_lang_tokenizer = tokenize(targ_lang)
 
-    inp_lang_tokenizer = shrink_vocabulary(inp_lang_tokenizer)
-    targ_lang_tokenizer = shrink_vocabulary(targ_lang_tokenizer)
+#     inp_lang_tokenizer = shrink_vocabulary(inp_lang_tokenizer)
+#     targ_lang_tokenizer = shrink_vocabulary(targ_lang_tokenizer)
+    
     input_tensor = text_to_seq(inp_lang_tokenizer, inp_lang)
     target_tensor = text_to_seq(targ_lang_tokenizer, targ_lang)
 
@@ -242,11 +288,14 @@ def translate(sentence):
 def save_result(input_file, output_file):
     df_test = pd.read_csv(input_file)
     out = []
-    for w in df_test['sourceLineTokens']:
-        w = ast.literal_eval(w)
-        res = translate(w)
+    for w in df_test['sourceLineText']:
         get_token = C_Tokenizer()
+        res,som = get_token.tokenize(w)
+        res, rev_dict = normalize_test(res, som)
+        
+        res = translate(w)
         res,som = get_token.tokenize(res[:-6])
+        
         out.append(res)
     new_df = df_test.copy();
     new_df['fixedTokens'] = out
@@ -297,7 +346,7 @@ if __name__ == '__main__':
         loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
                                                                     reduction='none')
 
-        checkpoint_dir = './training_checkpoints'
+        checkpoint_dir = './training_checkpoints_10_may_line_28percent'
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         checkpoint = tf.train.Checkpoint(optimizer=optimizer,
                                          encoder=encoder,
